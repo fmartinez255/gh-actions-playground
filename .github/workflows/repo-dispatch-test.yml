@@ -1,0 +1,11 @@
+name: Repository Dispatch
+on:
+  repository_dispatch:
+    types: [test-event]
+
+jobs:
+  hello:
+    runs-on: [minikube-test]
+    steps:
+      - run: echo "Hello from ${{ github.event.client_payload.source_repo }} repo!"
+      - run: echo "This is some data from ${{ github.event.client_payload.source_repo }} -> ${{ github.event.client_payload.test }}"

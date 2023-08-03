@@ -1,4 +1,4 @@
-name: Runner CI
+name: Test build GH Actions Runner
 
 on:
   workflow_dispatch:

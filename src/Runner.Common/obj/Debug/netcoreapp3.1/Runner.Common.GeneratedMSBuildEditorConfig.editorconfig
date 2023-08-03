@@ -1,0 +1,3 @@
+is_global = true
+build_property.RootNamespace = Runner.Common
+build_property.ProjectDir = /Users/francisco.martinez/git/tivo/actions-runner/src/Runner.Common/

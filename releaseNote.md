@@ -1,17 +1,9 @@
-## Features
-- Support matrix context in output keys (#2477)
-- Add update certificates to `./run.sh` if `RUNNER_UPDATE_CA_CERTS` env is set (#2471)
-- Bypass all proxies for all hosts if `no_proxy='*'` is set (#2395)
-- Change runner image to make user/folder align with `ubuntu-latest` hosted runner. (#2469)
-
 ## Bugs
-- Exit on runner version deprecation error (#2299)
-- Runner service exit after consecutive re-try exits (#2426)
+- Fixes `if:cancelled()` composite steps not running and normal composite steps not interrupting when the job is cancelled (#2638)
+- Fix the bug causing double error reporting fix to remain inactive (#2703)
 
 ## Misc
-- Replace deprecated command with environment file (#2429)
-- Make requests to `Run` service to renew job request (#2461)
-- Add job/step log upload to Result service (#2447, #2439)
+- Collect telemetry on GitHub-related HTTP requests (#2691) 
 
 _Note: Actions Runner follows a progressive release policy, so the latest release might not be available to your enterprise, organization, or repository yet. 
 To confirm which version of the Actions Runner you should expect, please view the download instructions for your enterprise, organization, or repository. 

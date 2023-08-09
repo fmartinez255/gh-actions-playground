@@ -1,4 +1,4 @@
-using GitHub.Runner.Sdk;
+﻿using GitHub.Runner.Sdk;
 using System;
 using System.IO;
 using System.Linq;
@@ -49,6 +49,12 @@ namespace GitHub.Runner.Common
 
         [DataMember(EmitDefaultValue = false)]
         public string MonitorSocketAddress { get; set; }
+
+        [DataMember(EmitDefaultValue = false)]
+        public bool UseV2Flow { get; set; }
+
+        [DataMember(EmitDefaultValue = false)]
+        public string ServerUrlV2 { get; set; }
 
         [IgnoreDataMember]
         public bool IsHostedServer

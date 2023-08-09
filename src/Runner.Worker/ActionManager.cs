@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -11,12 +11,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using GitHub.DistributedTask.ObjectTemplating.Tokens;
 using GitHub.Runner.Common;
+using GitHub.Runner.Common.Util;
 using GitHub.Runner.Sdk;
 using GitHub.Runner.Worker.Container;
 using GitHub.Services.Common;
 using WebApi = GitHub.DistributedTask.WebApi;
 using Pipelines = GitHub.DistributedTask.Pipelines;
 using PipelineTemplateConstants = GitHub.DistributedTask.Pipelines.ObjectTemplating.PipelineTemplateConstants;
+using GitHub.DistributedTask.WebApi;
 
 namespace GitHub.Runner.Worker
 {
@@ -100,7 +102,19 @@ namespace GitHub.Runner.Worker
             }
             IEnumerable<Pipelines.ActionStep> actions = steps.OfType<Pipelines.ActionStep>();
             executionContext.Output("Prepare all required actions");
-            var result = await PrepareActionsRecursiveAsync(executionContext, state, actions, depth, rootStepId);
+            PrepareActionsState result = new PrepareActionsState();
+            try
+            {
+                result = await PrepareActionsRecursiveAsync(executionContext, state, actions, depth, rootStepId);
+            }
+            catch (FailedToResolveActionDownloadInfoException ex)
+            {
+                // Log the error and fail the PrepareActionsAsync Initialization.
+                Trace.Error($"Caught exception from PrepareActionsAsync Initialization: {ex}");
+                executionContext.InfrastructureError(ex.Message);
+                executionContext.Result = TaskResult.Failed;
+                throw;
+            }
             if (!FeatureManager.IsContainerHooksEnabled(executionContext.Global.Variables))
             {
                 if (state.ImagesToPull.Count > 0)
@@ -303,15 +317,28 @@ namespace GitHub.Runner.Worker
 
             if (action.Reference.Type == Pipelines.ActionSourceType.ContainerRegistry)
             {
-                Trace.Info("Load action that reference container from registry.");
-                CachedActionContainers.TryGetValue(action.Id, out var container);
-                ArgUtil.NotNull(container, nameof(container));
-                definition.Data.Execution = new ContainerActionExecutionData()
+                if (FeatureManager.IsContainerHooksEnabled(executionContext.Global.Variables))
                 {
-                    Image = container.ContainerImage
-                };
+                    Trace.Info("Load action that will run container through container hooks.");
+                    var containerAction = action.Reference as Pipelines.ContainerRegistryReference;
+                    definition.Data.Execution = new ContainerActionExecutionData()
+                    {
+                        Image = containerAction.Image,
+                    };
+                    Trace.Info($"Using action container image: {containerAction.Image}.");
+                }
+                else
+                {
+                    Trace.Info("Load action that reference container from registry.");
+                    CachedActionContainers.TryGetValue(action.Id, out var container);
+                    ArgUtil.NotNull(container, nameof(container));
+                    definition.Data.Execution = new ContainerActionExecutionData()
+                    {
+                        Image = container.ContainerImage
+                    };
 
-                Trace.Info($"Using action container image: {container.ContainerImage}.");
+                    Trace.Info($"Using action container image: {container.ContainerImage}.");
+                }
             }
             else if (action.Reference.Type == Pipelines.ActionSourceType.Repository)
             {
@@ -648,13 +675,21 @@ namespace GitHub.Runner.Worker
             }
 
             // Resolve download info
+            var launchServer = HostContext.GetService<ILaunchServer>();
             var jobServer = HostContext.GetService<IJobServer>();
             var actionDownloadInfos = default(WebApi.ActionDownloadInfoCollection);
             for (var attempt = 1; attempt <= 3; attempt++)
             {
                 try
                 {
-                    actionDownloadInfos = await jobServer.ResolveActionDownloadInfoAsync(executionContext.Global.Plan.ScopeIdentifier, executionContext.Global.Plan.PlanType, executionContext.Global.Plan.PlanId, executionContext.Root.Id, new WebApi.ActionReferenceList { Actions = actionReferences }, executionContext.CancellationToken);
+                    if (MessageUtil.IsRunServiceJob(executionContext.Global.Variables.Get(Constants.Variables.System.JobRequestType)))
+                    {
+                        actionDownloadInfos = await launchServer.ResolveActionsDownloadInfoAsync(executionContext.Global.Plan.PlanId, executionContext.Root.Id, new WebApi.ActionReferenceList { Actions = actionReferences }, executionContext.CancellationToken);
+                    }
+                    else
+                    {
+                        actionDownloadInfos = await jobServer.ResolveActionDownloadInfoAsync(executionContext.Global.Plan.ScopeIdentifier, executionContext.Global.Plan.PlanType, executionContext.Global.Plan.PlanId, executionContext.Root.Id, new WebApi.ActionReferenceList { Actions = actionReferences }, executionContext.CancellationToken);
+                    }
                     break;
                 }
                 catch (Exception ex) when (!executionContext.CancellationToken.IsCancellationRequested) // Do not retry if the run is cancelled.
@@ -1007,7 +1042,7 @@ namespace GitHub.Runner.Worker
                 if (actionDefinitionData.Execution.ExecutionType == ActionExecutionType.Container)
                 {
                     var containerAction = actionDefinitionData.Execution as ContainerActionExecutionData;
-                    if (containerAction.Image.EndsWith("Dockerfile") || containerAction.Image.EndsWith("dockerfile"))
+                    if (DockerUtil.IsDockerfile(containerAction.Image))
                     {
                         var dockerFileFullPath = Path.Combine(actionEntryDirectory, containerAction.Image);
                         executionContext.Debug($"Dockerfile for action: '{dockerFileFullPath}'.");
@@ -1092,8 +1127,16 @@ namespace GitHub.Runner.Worker
             }
             else
             {
-                var fullPath = IOUtil.ResolvePath(actionEntryDirectory, "."); // resolve full path without access filesystem.
-                throw new InvalidOperationException($"Can't find 'action.yml', 'action.yaml' or 'Dockerfile' under '{fullPath}'. Did you forget to run actions/checkout before running your local action?");
+                var reference = repositoryReference.Name;
+                if (!string.IsNullOrEmpty(repositoryReference.Path))
+                {
+                    reference = $"{reference}/{repositoryReference.Path}";
+                }
+                if (!string.IsNullOrEmpty(repositoryReference.Ref))
+                {
+                    reference = $"{reference}@{repositoryReference.Ref}";
+                }
+                throw new InvalidOperationException($"Can't find 'action.yml', 'action.yaml' or 'Dockerfile' for action '{reference}'.");
             }
         }
 

@@ -14,7 +14,8 @@ jobs:
         runtime: [ linux-x64 ]
         include:
         - runtime: linux-x64
-          os: minikube-test
+          # os: minikube-test
+          os: runner-docker
           devScript: ./dev.sh
 
 

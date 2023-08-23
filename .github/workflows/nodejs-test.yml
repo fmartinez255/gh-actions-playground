@@ -1,0 +1,22 @@
+name: Test NodeJS Failure
+# This workflow will test whether the issue found in https://github.com/actions/checkout/issues/334 exists
+# in the runner that picks up this job
+
+on:
+  workflow_dispatch:
+
+jobs:
+  hello-strings:
+    name: Run a container and echo strings
+    runs-on: [minikube-test]
+    container: alpine:3.18
+    strategy:
+      fail-fast: true
+      matrix:
+        strings:
+          - "hello world"
+          - "sample text"
+          - "foo fighters"
+    steps:
+      - uses: actions/checkout@v3
+      - run: echo "${{ matrix.strings }}"
